@@ -1,6 +1,9 @@
 /**
- * Scholarly Reading & Critique Portal - Client Engine (app.js)
- * Locked to Google Apps Script Backend + Automatic Two-Way Sync
+ * TERECONET Inhouse Academic Meeting Portal - Client Engine (app.js)
+ * Features:
+ * 1. Locked to Google Apps Script Backend + Automatic Two-Way Sync
+ * 2. Persistent Admin & Host Studio Unlock Across Page Refreshes
+ * 3. Clean Initial State (No Demo Clutter) + Admin Delete Controls
  */
 
 const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbx-6Ui54yq-Sn78icCjcHNsbDzd7xIrASDjnxRoWmla1f62Qx1TnocCbj-A_sQHX31e_A/exec';
@@ -9,7 +12,9 @@ const STORAGE_KEYS = {
   STATE: 'srcp_portal_state_v1',
   READER_EMAIL: 'srcp_reader_email',
   GEMINI_KEY: 'srcp_byok_gemini_key',
-  DEVICE_TOKEN: 'srcp_persistent_device_token'
+  DEVICE_TOKEN: 'srcp_persistent_device_token',
+  ADMIN_AUTH: 'srcp_admin_unlocked',
+  HOST_AUTH: 'srcp_host_unlocked'
 };
 
 let clientTelemetry = {
@@ -80,153 +85,15 @@ async function computeDeviceTelemetry() {
 }
 
 /* ==========================================================================
-   2. DEFAULT SEED DATA (OVERLAPPING MONTHLY PIPELINES)
+   2. CLEAN INITIAL STATE (NO DEMO DATA)
    ========================================================================== */
 function getInitialSeedState() {
   return {
     adminPasscode: 'ADMIN-2027',
-    groups: [
-      {
-        id: 'GRP-A',
-        name: 'Group A: Qualitative & Narrative Inquiry',
-        focus: 'Qualitative Methodology, Reflexivity & Teacher Identity'
-      },
-      {
-        id: 'GRP-B',
-        name: 'Group B: SLA & Pedagogical Innovation',
-        focus: 'Classroom Intervention, Task Design & Psychometrics'
-      }
-    ],
-    members: [
-      {
-        id: 'MEM-1',
-        name: 'Dr Nguyen Minh Anh',
-        email: 'minhanh@university.edu.vn',
-        affiliation: 'Faculty of Foreign Languages',
-        education: 'Doctorate / PhD',
-        researchExp: 'Senior / Experienced (5+ years)',
-        pubExp: 'Experienced Author & Journal Reviewer/Editor',
-        leadExp: 'Principal Investigator / Project Director',
-        interests: ['Qualitative Inquiry', 'Language Teacher Identity & Education'],
-        avoidedMonths: ['May', 'Aug'],
-        groupId: 'GRP-A',
-        status: 'Active',
-        ip: '113.161.72.14',
-        fingerprint: 'fp_8f31c902a14b8821'
-      },
-      {
-        id: 'MEM-2',
-        name: 'Le Hoang Nam',
-        email: 'hoangnam@university.edu.vn',
-        affiliation: 'School of Education',
-        education: 'PhD Candidate / Doctoral Researcher',
-        researchExp: 'Intermediate (3-5 years)',
-        pubExp: 'International peer-reviewed journals / Books',
-        leadExp: 'Co-Investigator / Work-Package Lead',
-        interests: ['Second Language Acquisition', 'Quantitative & Scale Validation'],
-        avoidedMonths: ['Feb', 'Jun'],
-        groupId: 'GRP-B',
-        status: 'Active',
-        ip: '27.72.100.51',
-        fingerprint: 'fp_44e09b12c77109d3'
-      }
-    ],
-    sessions: [
-      {
-        id: '2027-02',
-        monthLabel: 'February 2027 Session',
-        hostGroupId: 'GRP-A',
-        hostGroupName: 'Group A: Qualitative & Narrative Inquiry',
-        prepStartDate: '2026-12-15',
-        quizReleaseDate: '2027-01-05',
-        meetingDate: '2027-02-14',
-        hostPasscode: 'FEB27-HOST',
-        passThreshold: 80,
-        status: 'OPEN_FOR_READING',
-        paperTitle: 'Reflexive Thematic Analysis in Applied Linguistics: Beyond Coding Reliability',
-        paperAuthors: 'Braun & Clarke (2024) - Applied Linguistics Review',
-        paperUrl: 'https://doi.org/10.1080/example.2024.01',
-        paperAbstract: 'This paper critically examines the conflation of codebook positivism with reflexive thematic analysis in language education research, proposing a heuristic for theoretical coherence.',
-        meetingLink: 'https://zoom.us/j/98234719283?pwd=FebReadingGroupLink',
-        activities: [
-          {
-            title: 'Activity 1: Epistemological Audit (15 mins)',
-            description: 'In small groups, examine the three sample coding excerpts on page 8 and identify where positivist assumptions creep into the researcher commentary.'
-          },
-          {
-            title: 'Activity 2: Methodological Stress-Test (25 mins)',
-            description: 'Debate how the authors distinguish "topic summaries" from "shared-meaning themes" and apply the distinction to your current manuscript.'
-          }
-        ],
-        quiz: [
-          {
-            question: 'According to the authors, what is the primary flaw when researchers calculate inter-rater reliability in Reflexive Thematic Analysis?',
-            options: [
-              'It requires too many statistical software licences.',
-              'It treats researcher subjectivity as bias to be eliminated rather than an analytic resource.',
-              'It is only valid for sample sizes larger than 50 participants.'
-            ],
-            correctIndex: 1
-          },
-          {
-            question: 'How do the authors define a "bucket/domain summary" compared to a reflexive theme?',
-            options: [
-              'A collection of everything participants said about a topic without a central organising concept.',
-              'A theme verified by at least three external auditors.',
-              'A quantitative frequency table of lexical items.'
-            ],
-            correctIndex: 0
-          }
-        ]
-      },
-      {
-        id: '2027-03',
-        monthLabel: 'March 2027 Session',
-        hostGroupId: 'GRP-B',
-        hostGroupName: 'Group B: SLA & Pedagogical Innovation',
-        prepStartDate: '2027-01-10',
-        quizReleaseDate: '2027-02-05',
-        meetingDate: '2027-03-12',
-        hostPasscode: 'MAR27-HOST',
-        passThreshold: 80,
-        status: 'IN_PREP',
-        paperTitle: 'Validating Psychological Preparedness Scales for Early-Career Language Teachers',
-        paperAuthors: 'Draft Selection by Group B (2026) - System',
-        paperUrl: 'https://doi.org/10.1016/j.system.2026.example',
-        paperAbstract: 'Group B started preparing this session in January. The reading pack and gatekeeping quiz will be unlocked for all members on 5 February.',
-        meetingLink: 'https://zoom.us/j/77123891234?pwd=MarchMeetingSecret',
-        activities: [
-          {
-            title: 'Construct Validity Workshop',
-            description: 'Critique the item generation and exploratory/confirmatory factor analysis splits reported in Study 1 and Study 2.'
-          }
-        ],
-        quiz: [
-          {
-            question: 'Why did the authors split their sample across EFA and CFA cohorts?',
-            options: [
-              'To avoid overfitting the factor structure to a single sample.',
-              'Because the first cohort failed to complete the demographic section.',
-              'To reduce the number of Likert points from 7 to 5.'
-            ],
-            correctIndex: 0
-          }
-        ]
-      }
-    ],
-    submissions: [
-      {
-        id: 'SUB-1',
-        timestamp: '2027-01-18 14:20',
-        sessionId: '2027-02',
-        memberEmail: 'minhanh@university.edu.vn',
-        score: 100,
-        passed: true,
-        question: 'How can we justify reflexive subjectivity to reviewers who still demand Cohen’s Kappa in TESOL journals?',
-        ip: '113.161.72.14',
-        fingerprint: 'fp_8f31c902a14b8821'
-      }
-    ],
+    groups: [],
+    members: [],
+    sessions: [],
+    submissions: [],
     blockedRegistry: []
   };
 }
@@ -239,7 +106,7 @@ async function loadState() {
   try {
     const res = await fetch(GAS_WEBAPP_URL, { method: 'GET' });
     const remoteData = await res.json();
-    if (remoteData && remoteData.sessions && remoteData.groups) {
+    if (remoteData && Array.isArray(remoteData.sessions) && Array.isArray(remoteData.groups)) {
       appState = remoteData;
       localStorage.setItem(STORAGE_KEYS.STATE, JSON.stringify(appState));
       return;
@@ -248,7 +115,7 @@ async function loadState() {
     console.warn('Could not fetch remote state, falling back to local cache:', err);
   }
 
-  // 2. If the Google Sheet is still empty on first run, load local cache or seed and push to Google Sheets
+  // 2. Fallback to local cache or clean initial seed
   const saved = localStorage.getItem(STORAGE_KEYS.STATE);
   if (saved) {
     try {
@@ -288,7 +155,7 @@ async function syncWithGoogleAppsScript(action, payload) {
 
 function isUserBlocked(email = '') {
   const cleanEmail = (email || '').trim().toLowerCase();
-  return appState.blockedRegistry.find(ban => {
+  return (appState.blockedRegistry || []).find(ban => {
     const emailMatch = cleanEmail && ban.email && ban.email.toLowerCase() === cleanEmail;
     const ipMatch = ban.ip && ban.ip === clientTelemetry.ip && clientTelemetry.ip !== '127.0.0.1';
     const fpMatch = ban.fingerprint && ban.fingerprint === clientTelemetry.fingerprint;
@@ -311,7 +178,13 @@ function renderReaderPortal() {
   const container = document.getElementById('sessionCardsContainer');
   container.innerHTML = '';
 
-  if (!selectedSessionId && appState.sessions.length > 0) {
+  if (!appState.sessions || appState.sessions.length === 0) {
+    container.innerHTML = '<div class="card"><p class="text-muted">No monthly reading pipelines have been scheduled yet. Check back soon or register your profile under <strong>2. Join &amp; Member Profile</strong>.</p></div>';
+    document.getElementById('activeSessionWorkspace').classList.add('hidden');
+    return;
+  }
+
+  if (!selectedSessionId || !appState.sessions.some(s => s.id === selectedSessionId)) {
     selectedSessionId = appState.sessions[0].id;
   }
 
@@ -342,7 +215,7 @@ function renderReaderPortal() {
 
 function renderSelectedSessionWorkspace() {
   const ws = document.getElementById('activeSessionWorkspace');
-  const session = appState.sessions.find(s => s.id === selectedSessionId);
+  const session = (appState.sessions || []).find(s => s.id === selectedSessionId);
   if (!session) {
     ws.classList.add('hidden');
     return;
@@ -404,7 +277,7 @@ function renderSelectedSessionWorkspace() {
 
   const currentEmail = (document.getElementById('readerEmailInput').value || '').trim().toLowerCase();
   if (currentEmail) {
-    const existingPass = appState.submissions.find(
+    const existingPass = (appState.submissions || []).find(
       sub => sub.sessionId === session.id && sub.memberEmail.toLowerCase() === currentEmail && sub.passed
     );
     if (existingPass && !isUserBlocked(currentEmail)) {
@@ -586,6 +459,7 @@ document.getElementById('unlockHostStudioBtn').addEventListener('click', () => {
     showAlert('Invalid Host Access Code. Please check the code assigned to your group.', 'danger');
     return;
   }
+  localStorage.setItem(STORAGE_KEYS.HOST_AUTH, code);
   activeHostSessionId = session.id;
   populateHostStudio(session);
   document.getElementById('hostStudioWorkspace').classList.remove('hidden');
@@ -803,6 +677,7 @@ document.getElementById('unlockAdminBtn').addEventListener('click', () => {
     showAlert('Incorrect Admin Passcode.', 'danger');
     return;
   }
+  localStorage.setItem(STORAGE_KEYS.ADMIN_AUTH, pass);
   document.getElementById('adminWorkspace').classList.remove('hidden');
   renderAdminConsole();
   showAlert('Admin Command Console unlocked.', 'success');
@@ -822,7 +697,7 @@ function renderAdminRosterTable() {
 
   appState.members
     .filter(m => {
-      const hay = `${m.name} ${m.email} ${m.education} ${m.interests.join(' ')}`.toLowerCase();
+      const hay = `${m.name} ${m.email} ${m.education} ${(m.interests || []).join(' ')}`.toLowerCase();
       return hay.includes(filter);
     })
     .forEach(m => {
@@ -843,8 +718,8 @@ function renderAdminRosterTable() {
           <span class="small"><strong>Pub:</strong> ${escapeHtml(m.pubExp)}</span><br/>
           <span class="small"><strong>Lead:</strong> ${escapeHtml(m.leadExp)}</span>
         </td>
-        <td>${m.interests.map(i => `<span class="badge">${escapeHtml(i)}</span>`).join(' ')}</td>
-        <td>${m.avoidedMonths.length ? m.avoidedMonths.map(mo => `<span class="badge badge-IN_PREP">${escapeHtml(mo)}</span>`).join(' ') : '<span class="small text-muted">None</span>'}</td>
+        <td>${(m.interests || []).map(i => `<span class="badge">${escapeHtml(i)}</span>`).join(' ')}</td>
+        <td>${(m.avoidedMonths || []).length ? m.avoidedMonths.map(mo => `<span class="badge badge-IN_PREP">${escapeHtml(mo)}</span>`).join(' ') : '<span class="small text-muted">None</span>'}</td>
         <td class="small" style="font-family:monospace;">
           IP: ${escapeHtml(m.ip || 'N/A')}<br/>
           FP: ${escapeHtml(m.fingerprint || 'N/A')}
@@ -890,6 +765,11 @@ function renderAdminGroupsOverview() {
   const select = document.getElementById('schedHostGroup');
   select.innerHTML = appState.groups.map(g => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');
 
+  if (!appState.groups.length) {
+    container.innerHTML = '<p class="small text-muted">No host groups created yet.</p>';
+    return;
+  }
+
   container.innerHTML = appState.groups.map(g => {
     const members = appState.members.filter(m => m.groupId === g.id);
     const blackoutCounts = {};
@@ -906,7 +786,10 @@ function renderAdminGroupsOverview() {
       <div class="quiz-item-card">
         <div class="flex-between">
           <strong>${escapeHtml(g.name)} (${members.length} members)</strong>
-          <span class="badge">${escapeHtml(g.id)}</span>
+          <div class="inline-input">
+            <span class="badge">${escapeHtml(g.id)}</span>
+            <button type="button" class="btn-danger btn-sm" data-delete-group="${g.id}">Delete</button>
+          </div>
         </div>
         <p class="small text-muted">${escapeHtml(g.focus)}</p>
         <p class="small mt-05"><strong>Members:</strong> ${members.length ? members.map(m => `${escapeHtml(m.name)} (${escapeHtml(m.education)})`).join(', ') : 'None assigned'}</p>
@@ -914,6 +797,19 @@ function renderAdminGroupsOverview() {
       </div>
     `;
   }).join('');
+
+  container.querySelectorAll('[data-delete-group]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const gId = btn.getAttribute('data-delete-group');
+      appState.groups = appState.groups.filter(g => g.id !== gId);
+      appState.members.forEach(m => {
+        if (m.groupId === gId) m.groupId = '';
+      });
+      saveState();
+      renderAdminConsole();
+      showAlert('Host group deleted.', 'info');
+    });
+  });
 }
 
 document.getElementById('adminCreateGroupForm').addEventListener('submit', e => {
@@ -933,13 +829,21 @@ document.getElementById('adminCreateGroupForm').addEventListener('submit', e => 
 
 function renderAdminScheduler() {
   const container = document.getElementById('adminScheduleTableContainer');
+  if (!appState.sessions.length) {
+    container.innerHTML = '<p class="small text-muted">No monthly pipelines scheduled yet.</p>';
+    return;
+  }
+
   container.innerHTML = appState.sessions.map(s => {
     const subs = appState.submissions.filter(sub => sub.sessionId === s.id && sub.passed);
     return `
       <div class="quiz-item-card">
         <div class="flex-between">
           <strong>${escapeHtml(s.id)} — ${escapeHtml(s.monthLabel)}</strong>
-          <span class="badge badge-${s.status}">${escapeHtml(s.status)}</span>
+          <div class="inline-input">
+            <span class="badge badge-${s.status}">${escapeHtml(s.status)}</span>
+            <button type="button" class="btn-danger btn-sm" data-delete-session="${s.id}">Delete</button>
+          </div>
         </div>
         <p class="small"><strong>Assigned Host:</strong> ${escapeHtml(s.hostGroupName)} | <strong>Host Code:</strong> <code>${escapeHtml(s.hostPasscode)}</code></p>
         <p class="small text-muted">Prep: ${escapeHtml(s.prepStartDate)} | Quiz Open: ${escapeHtml(s.quizReleaseDate)} | Meeting: ${escapeHtml(s.meetingDate)}</p>
@@ -947,6 +851,17 @@ function renderAdminScheduler() {
       </div>
     `;
   }).join('');
+
+  container.querySelectorAll('[data-delete-session]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sId = btn.getAttribute('data-delete-session');
+      appState.sessions = appState.sessions.filter(s => s.id !== sId);
+      saveState();
+      renderReaderPortal();
+      renderAdminScheduler();
+      showAlert(`Deleted session ${sId}.`, 'info');
+    });
+  });
 }
 
 document.getElementById('adminCreateSessionForm').addEventListener('submit', e => {
@@ -1069,6 +984,28 @@ window.addEventListener('DOMContentLoaded', async () => {
   const savedGemini = localStorage.getItem(STORAGE_KEYS.GEMINI_KEY);
   if (savedGemini) {
     document.getElementById('byokGeminiKey').value = savedGemini;
+  }
+
+  // Auto-unlock Admin Console if passcode was already verified in this browser
+  const savedAdminPass = localStorage.getItem(STORAGE_KEYS.ADMIN_AUTH);
+  if (savedAdminPass && savedAdminPass === appState.adminPasscode) {
+    document.getElementById('adminPasscodeInput').value = savedAdminPass;
+    document.getElementById('adminWorkspace').classList.remove('hidden');
+    renderAdminConsole();
+  }
+
+  // Auto-unlock Host Studio if host passcode was already verified in this browser
+  const savedHostPass = localStorage.getItem(STORAGE_KEYS.HOST_AUTH);
+  if (savedHostPass) {
+    const hostSession = (appState.sessions || []).find(
+      s => s.hostPasscode.toLowerCase() === savedHostPass.toLowerCase()
+    );
+    if (hostSession) {
+      document.getElementById('hostPasscodeInput').value = savedHostPass;
+      activeHostSessionId = hostSession.id;
+      populateHostStudio(hostSession);
+      document.getElementById('hostStudioWorkspace').classList.remove('hidden');
+    }
   }
 
   renderReaderPortal();
