@@ -1,16 +1,12 @@
 /**
  * Scholarly Reading & Critique Portal - Client Engine (app.js)
- * Features:
- * 1. Native SHA-256 Hardware/Browser Digital Fingerprinting + Public IP Resolution
- * 2. Multi-Cycle Concurrent Reading Pipelines (IN_PREP, OPEN_FOR_READING, ARCHIVED)
- * 3. Attendance Gatekeeper Quiz & Critical Question Collector
- * 4. Academic Profile Onboarding & Blackout Month Conflict Checker
- * 5. Client-Side BYOK Gemini API Helper for Host Groups
+ * Locked to Google Apps Script Backend + Automatic Two-Way Sync
  */
+
+const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbx-6Ui54yq-Sn78icCjcHNsbDzd7xIrASDjnxRoWmla1f62Qx1TnocCbj-A_sQHX31e_A/exec';
 
 const STORAGE_KEYS = {
   STATE: 'srcp_portal_state_v1',
-  GAS_URL: 'srcp_gas_webapp_url',
   READER_EMAIL: 'srcp_reader_email',
   GEMINI_KEY: 'srcp_byok_gemini_key',
   DEVICE_TOKEN: 'srcp_persistent_device_token'
@@ -29,14 +25,12 @@ let activeHostSessionId = null;
    1. DIGITAL FINGERPRINTING & IP TELEMETRY
    ========================================================================== */
 async function computeDeviceTelemetry() {
-  // Persistent local token fallback so clearing session doesn't rotate ID easily
   let localToken = localStorage.getItem(STORAGE_KEYS.DEVICE_TOKEN);
   if (!localToken) {
     localToken = 'tok_' + Math.random().toString(36).substring(2, 12);
     localStorage.setItem(STORAGE_KEYS.DEVICE_TOKEN, localToken);
   }
 
-  // Gather deterministic hardware & browser signals
   const signals = [
     navigator.userAgent || '',
     navigator.language || '',
@@ -46,7 +40,6 @@ async function computeDeviceTelemetry() {
     navigator.platform || ''
   ];
 
-  // Canvas 2D rendering signature
   try {
     const canvas = document.createElement('canvas');
     canvas.width = 220;
@@ -63,7 +56,6 @@ async function computeDeviceTelemetry() {
     signals.push('no_canvas');
   }
 
-  // Hash via Web Crypto SHA-256
   const rawString = signals.join('||');
   const msgBuffer = new TextEncoder().encode(rawString);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -71,7 +63,6 @@ async function computeDeviceTelemetry() {
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   clientTelemetry.fingerprint = 'fp_' + hashHex.substring(0, 16);
 
-  // Resolve public IP address (non-blocking)
   try {
     const res = await fetch('https://api64.ipify.org?format=json');
     if (res.ok) {
@@ -241,16 +232,31 @@ function getInitialSeedState() {
 }
 
 /* ==========================================================================
-   3. STATE STORAGE & SECURITY GATE ENFORCEMENT
+   3. STATE STORAGE & TWO-WAY CLOUD SYNC WITH GOOGLE APPS SCRIPT
    ========================================================================== */
-function loadState() {
+async function loadState() {
+  // 1. Pull latest live state from Google Sheets first
+  try {
+    const res = await fetch(GAS_WEBAPP_URL, { method: 'GET' });
+    const remoteData = await res.json();
+    if (remoteData && remoteData.sessions && remoteData.groups) {
+      appState = remoteData;
+      localStorage.setItem(STORAGE_KEYS.STATE, JSON.stringify(appState));
+      return;
+    }
+  } catch (err) {
+    console.warn('Could not fetch remote state, falling back to local cache:', err);
+  }
+
+  // 2. If the Google Sheet is still empty on first run, load local cache or seed and push to Google Sheets
   const saved = localStorage.getItem(STORAGE_KEYS.STATE);
   if (saved) {
     try {
       appState = JSON.parse(saved);
+      syncWithGoogleAppsScript('SYNC_STATE', appState);
       return;
     } catch (e) {
-      console.error('Corrupt state, resetting seed', e);
+      console.error('Corrupt local state, resetting seed', e);
     }
   }
   appState = getInitialSeedState();
@@ -263,10 +269,8 @@ function saveState() {
 }
 
 async function syncWithGoogleAppsScript(action, payload) {
-  const gasUrl = localStorage.getItem(STORAGE_KEYS.GAS_URL);
-  if (!gasUrl) return null;
   try {
-    const response = await fetch(gasUrl, {
+    const response = await fetch(GAS_WEBAPP_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
@@ -277,7 +281,7 @@ async function syncWithGoogleAppsScript(action, payload) {
     });
     return await response.json();
   } catch (err) {
-    console.warn('GAS sync warning (offline/demo fallback active):', err);
+    console.warn('GAS sync warning:', err);
     return null;
   }
 }
@@ -360,7 +364,6 @@ function renderSelectedSessionWorkspace() {
   document.getElementById('wsPaperUrlBtn').href = session.paperUrl;
   document.getElementById('wsPassThresholdBadge').textContent = `Pass Mark: ${session.passThreshold}%`;
 
-  // Render activities
   const actList = document.getElementById('wsActivitiesList');
   actList.innerHTML = (session.activities || []).map(act => `
     <div class="activity-card">
@@ -369,7 +372,6 @@ function renderSelectedSessionWorkspace() {
     </div>
   `).join('') || '<p class="small text-muted">No activities published yet.</p>';
 
-  // Handle IN_PREP vs OPEN_FOR_READING
   const lockedNotice = document.getElementById('quizLockedNotice');
   const quizBox = document.getElementById('quizGatekeeperBox');
   const vaultBox = document.getElementById('unlockedMeetingVault');
@@ -385,7 +387,6 @@ function renderSelectedSessionWorkspace() {
   lockedNotice.classList.add('hidden');
   quizBox.classList.remove('hidden');
 
-  // Render Quiz Questions
   const qContainer = document.getElementById('wsQuizQuestionsContainer');
   qContainer.innerHTML = (session.quiz || []).map((q, qIdx) => `
     <div class="quiz-item-card">
@@ -401,7 +402,6 @@ function renderSelectedSessionWorkspace() {
     </div>
   `).join('');
 
-  // Check if current reader email already unlocked this session
   const currentEmail = (document.getElementById('readerEmailInput').value || '').trim().toLowerCase();
   if (currentEmail) {
     const existingPass = appState.submissions.find(
@@ -583,7 +583,7 @@ document.getElementById('unlockHostStudioBtn').addEventListener('click', () => {
   const code = document.getElementById('hostPasscodeInput').value.trim();
   const session = appState.sessions.find(s => s.hostPasscode.toLowerCase() === code.toLowerCase());
   if (!session) {
-    showAlert('Invalid Host Access Code. Try FEB27-HOST or MAR27-HOST in Demo Mode.', 'danger');
+    showAlert('Invalid Host Access Code. Please check the code assigned to your group.', 'danger');
     return;
   }
   activeHostSessionId = session.id;
@@ -718,7 +718,7 @@ document.getElementById('hostSessionForm').addEventListener('submit', e => {
 
   saveState();
   renderReaderPortal();
-  showAlert(`Session ${session.id} updated and set to ${session.status}.`, 'success');
+  showAlert(`Session ${session.id} updated and synced to Google Sheets.`, 'success');
 });
 
 function renderHostSubmittedQuestions(sessionId) {
@@ -800,7 +800,7 @@ Use British English spelling. Paper excerpt:\n\n${excerpt}`;
 document.getElementById('unlockAdminBtn').addEventListener('click', () => {
   const pass = document.getElementById('adminPasscodeInput').value.trim();
   if (pass !== appState.adminPasscode) {
-    showAlert('Incorrect Admin Passcode. (Demo default: ADMIN-2027)', 'danger');
+    showAlert('Incorrect Admin Passcode.', 'danger');
     return;
   }
   document.getElementById('adminWorkspace').classList.remove('hidden');
@@ -1058,34 +1058,13 @@ document.querySelectorAll('.sub-nav-btn').forEach(btn => {
   });
 });
 
-document.getElementById('configEndpointBtn').addEventListener('click', () => {
-  document.getElementById('configBanner').classList.toggle('hidden');
-});
-
-document.getElementById('saveGasUrlBtn').addEventListener('click', () => {
-  const url = document.getElementById('gasUrlInput').value.trim();
-  localStorage.setItem(STORAGE_KEYS.GAS_URL, url);
-  showAlert(url ? 'Google Apps Script Web App URL saved.' : 'Switched to Local Browser Demo Mode.', 'success');
-});
-
-document.getElementById('resetDemoBtn').addEventListener('click', () => {
-  localStorage.removeItem(STORAGE_KEYS.STATE);
-  loadState();
-  renderReaderPortal();
-  showAlert('Demo data restored to initial state.', 'info');
-});
-
 window.addEventListener('DOMContentLoaded', async () => {
-  loadState();
   await computeDeviceTelemetry();
+  await loadState();
 
   const savedEmail = localStorage.getItem(STORAGE_KEYS.READER_EMAIL);
   if (savedEmail) {
     document.getElementById('readerEmailInput').value = savedEmail;
-  }
-  const savedGas = localStorage.getItem(STORAGE_KEYS.GAS_URL);
-  if (savedGas) {
-    document.getElementById('gasUrlInput').value = savedGas;
   }
   const savedGemini = localStorage.getItem(STORAGE_KEYS.GEMINI_KEY);
   if (savedGemini) {
