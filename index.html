@@ -24,24 +24,8 @@
       <button class="nav-btn" data-tab="memberTab">2. Join &amp; Member Profile</button>
       <button class="nav-btn" data-tab="hostTab">3. Host Group Studio</button>
       <button class="nav-btn" data-tab="adminTab">4. Admin Console</button>
-      <button class="btn-secondary btn-sm ml-auto" id="configEndpointBtn">API Config</button>
     </div>
   </header>
-
-  <!-- API Endpoint Configuration Modal / Banner -->
-  <section class="container config-banner hidden" id="configBanner">
-    <div class="card card-highlight">
-      <h3>Backend Connection &amp; Demo Mode Setup</h3>
-      <p class="text-muted">
-        Paste your deployed Google Apps Script Web App URL below. If left blank, the portal runs in <strong>Local Sandbox / Demo Mode</strong> using sample overlapping pipelines in your browser's <code>localStorage</code> so you can test every feature immediately.
-      </p>
-      <div class="form-row">
-        <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec" />
-        <button class="btn-primary" id="saveGasUrlBtn">Save &amp; Sync</button>
-        <button class="btn-secondary" id="resetDemoBtn">Reset Demo Data</button>
-      </div>
-    </div>
-  </section>
 
   <!-- Global Notification Banner -->
   <div class="container">
@@ -283,7 +267,7 @@
           <div>
             <h2>Host Group Preparation Studio</h2>
             <p class="text-muted small">
-              Enter your session's <strong>Host Access Code</strong> (e.g., <code>MAR27-HOST</code> or <code>FEB27-HOST</code> in Demo Mode) to configure your monthly reading pack, build the gatekeeping quiz, and review member questions.
+              Enter your session's <strong>Host Access Code</strong> (assigned by the Administrator) to configure your monthly reading pack, build the gatekeeping quiz, and review member questions.
             </p>
           </div>
           <div class="inline-input">
@@ -402,11 +386,11 @@
           <div>
             <h2>Administrator Command Console</h2>
             <p class="text-muted small">
-              Manage member onboarding, balance host groups against blackout months, schedule overlapping monthly pipelines, and enforce IP/Fingerprint bans. (Demo Passcode: <code>ADMIN-2027</code>)
+              Manage member onboarding, balance host groups against blackout months, schedule overlapping monthly pipelines, and enforce IP/Fingerprint bans.
             </p>
           </div>
           <div class="inline-input">
-            <input type="password" id="adminPasscodeInput" placeholder="Admin Passcode (ADMIN-2027)" />
+            <input type="password" id="adminPasscodeInput" placeholder="Enter Admin Passcode" />
             <button class="btn-primary" id="unlockAdminBtn">Unlock Admin</button>
           </div>
         </div>
