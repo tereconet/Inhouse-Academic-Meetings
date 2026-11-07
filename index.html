@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scholarly Reading & Critique Portal</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Top Header & Navigation -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <div>
+        <span class="eyebrow">Monthly Research Critique Network</span>
+        <h1>Scholarly Reading &amp; Critique Portal</h1>
+      </div>
+      <div class="security-badge" id="securityBadge" title="Device Fingerprint &amp; Session Status">
+        <span class="dot"></span>
+        <span id="fpDisplay">Initialising device signature...</span>
+      </div>
+    </div>
+    <div class="container nav-bar">
+      <button class="nav-btn active" data-tab="readerTab">1. Reader Portal &amp; Gatekeeper</button>
+      <button class="nav-btn" data-tab="memberTab">2. Join &amp; Member Profile</button>
+      <button class="nav-btn" data-tab="hostTab">3. Host Group Studio</button>
+      <button class="nav-btn" data-tab="adminTab">4. Admin Console</button>
+      <button class="btn-secondary btn-sm ml-auto" id="configEndpointBtn">API Config</button>
+    </div>
+  </header>
+
+  <!-- API Endpoint Configuration Modal / Banner -->
+  <section class="container config-banner hidden" id="configBanner">
+    <div class="card card-highlight">
+      <h3>Backend Connection &amp; Demo Mode Setup</h3>
+      <p class="text-muted">
+        Paste your deployed Google Apps Script Web App URL below. If left blank, the portal runs in <strong>Local Sandbox / Demo Mode</strong> using sample overlapping pipelines in your browser's <code>localStorage</code> so you can test every feature immediately.
+      </p>
+      <div class="form-row">
+        <input type="url" id="gasUrlInput" placeholder="https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec" />
+        <button class="btn-primary" id="saveGasUrlBtn">Save &amp; Sync</button>
+        <button class="btn-secondary" id="resetDemoBtn">Reset Demo Data</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Global Notification Banner -->
+  <div class="container">
+    <div id="globalAlert" class="alert hidden"></div>
+  </div>
+
+  <main class="container main-content">
+    <!-- =====================================================================
+         TAB 1: READER PORTAL & ATTENDANCE GATEKEEPER
+    ====================================================================== -->
+    <section id="readerTab" class="tab-panel active">
+      <div class="section-header">
+        <div>
+          <h2>Monthly Reading Pipelines</h2>
+          <p class="text-muted">Select an active monthly session to read the target paper, complete the comprehension &amp; critique quiz, submit discussion questions, and unlock the live meeting link.</p>
+        </div>
+        <div class="identity-bar">
+          <label for="readerEmailInput">Your Registered Email:</label>
+          <div class="inline-input">
+            <input type="email" id="readerEmailInput" placeholder="you@university.edu" />
+            <button class="btn-secondary btn-sm" id="verifyReaderBtn">Load My Status</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pipeline Selector Cards -->
+      <div class="pipeline-grid" id="sessionCardsContainer">
+        <!-- Populated dynamically by app.js -->
+      </div>
+
+      <!-- Active Session Workspace -->
+      <div id="activeSessionWorkspace" class="workspace-grid hidden">
+        <!-- Left Column: Paper Metadata & Pre-Meeting Activities -->
+        <div class="card">
+          <div class="badge-row">
+            <span class="badge" id="wsSessionMonth">2027-03</span>
+            <span class="badge badge-status" id="wsSessionStatus">OPEN_FOR_READING</span>
+          </div>
+          <h3 id="wsPaperTitle">Paper Title</h3>
+          <p class="paper-authors" id="wsPaperAuthors"></p>
+          <p class="paper-meta">
+            <strong>Hosted by:</strong> <span id="wsHostGroup"></span> |
+            <strong>Prep Started:</strong> <span id="wsPrepDate"></span> |
+            <strong>Quiz Released:</strong> <span id="wsQuizDate"></span> |
+            <strong>Live Meeting:</strong> <span id="wsMeetingDate"></span>
+          </p>
+          <div class="paper-abstract" id="wsPaperAbstract"></div>
+          <div class="mt-1">
+            <a href="#" target="_blank" rel="noopener" class="btn-secondary btn-sm" id="wsPaperUrlBtn">Access Full Paper PDF / DOI &rarr;</a>
+          </div>
+
+          <hr class="divider" />
+
+          <h4>Structured Critique &amp; Live Meeting Activities</h4>
+          <p class="text-muted small">Prepared by the hosting group to guide our critical discussion during the meeting:</p>
+          <div id="wsActivitiesList" class="activities-list"></div>
+        </div>
+
+        <!-- Right Column: Gatekeeper Quiz, Question Submission & Unlocked Link -->
+        <div class="card">
+          <div id="quizLockedNotice" class="alert alert-info hidden">
+            <strong>Session Currently in Host Preparation (`IN_PREP`)</strong>
+            <p>The assigned host group is currently finalising the paper tasks and quiz. Tasks and quizzes will open to all members on <span id="wsUnlockDateText"></span>.</p>
+          </div>
+
+          <div id="quizGatekeeperBox">
+            <div class="flex-between">
+              <h3>Attendance Gatekeeper Quiz</h3>
+              <span class="badge badge-outline" id="wsPassThresholdBadge">Pass Mark: 80%</span>
+            </div>
+            <p class="text-muted small">
+              Complete all questions below and contribute at least one critical question for the host group. Achieving the required threshold immediately unlocks the live meeting room link.
+            </p>
+
+            <form id="readerQuizForm">
+              <div id="wsQuizQuestionsContainer"></div>
+
+              <div class="form-group mt-1">
+                <label for="readerCriticalQuestion"><strong>Your Critical Question / Methodological Critique for the Host Group *</strong></label>
+                <textarea id="readerCriticalQuestion" rows="3" required placeholder="Pose a substantive question regarding the paper's theoretical framing, research design, analytical rigour, or pedagogical implications..."></textarea>
+              </div>
+
+              <button type="submit" class="btn-primary btn-full">Submit Quiz &amp; Unlock Meeting Link</button>
+            </form>
+          </div>
+
+          <!-- Unlocked Meeting Link Vault -->
+          <div id="unlockedMeetingVault" class="vault-unlocked hidden">
+            <div class="vault-header">
+              <span class="vault-icon">&#128275;</span>
+              <div>
+                <h4>Attendance Gate Passed &mdash; Meeting Link Unlocked</h4>
+                <p class="small" id="vaultScoreText"></p>
+              </div>
+            </div>
+            <div class="vault-link-box">
+              <a href="#" target="_blank" rel="noopener" id="unlockedMeetingLink">https://...</a>
+            </div>
+            <p class="small text-muted mt-05">
+              Your completion record and critical question have been logged with the host group. Keep this email registered to retrieve the link on any device.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         TAB 2: MEMBER ONBOARDING, ACADEMIC PROFILE & GROUP LOOKUP
+    ====================================================================== -->
+    <section id="memberTab" class="tab-panel">
+      <div class="workspace-grid">
+        <!-- Registration Form -->
+        <div class="card">
+          <h2>Member Onboarding &amp; Academic Profile</h2>
+          <p class="text-muted small">
+            Register your methodological background, publication experience, and blackout months so the Administrator can assign balanced host groups.
+          </p>
+
+          <form id="memberRegistrationForm">
+            <div class="form-row-2">
+              <div class="form-group">
+                <label for="regName">Full Name *</label>
+                <input type="text" id="regName" required placeholder="Dr / Mr / Ms Full Name" />
+              </div>
+              <div class="form-group">
+                <label for="regEmail">Institutional / Primary Email *</label>
+                <input type="email" id="regEmail" required placeholder="name@university.edu" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="regAffiliation">Institution / Department / Role *</label>
+              <input type="text" id="regAffiliation" required placeholder="e.g., Faculty of Foreign Languages, University X" />
+            </div>
+
+            <div class="form-row-2">
+              <div class="form-group">
+                <label for="regEducation">Highest Education Level *</label>
+                <select id="regEducation" required>
+                  <option value="Undergraduate">Undergraduate</option>
+                  <option value="Master's Student">Master's Student</option>
+                  <option value="Master's Degree" selected>Master's Degree</option>
+                  <option value="PhD Candidate / Doctoral Researcher">PhD Candidate / Doctoral Researcher</option>
+                  <option value="Doctorate / PhD">Doctorate / PhD</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="regResearchExp">Research Experience *</label>
+                <select id="regResearchExp" required>
+                  <option value="Novice / Exploring (< 1 year)">Novice / Exploring (less than 1 year)</option>
+                  <option value="Early-Career (1-2 years)">Early-Career (1–2 years)</option>
+                  <option value="Intermediate (3-5 years)" selected>Intermediate (3–5 years)</option>
+                  <option value="Senior / Experienced (5+ years)">Senior / Experienced (5+ years)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row-2">
+              <div class="form-group">
+                <label for="regPubExp">Publication Experience *</label>
+                <select id="regPubExp" required>
+                  <option value="No formal publications yet">No formal publications yet</option>
+                  <option value="Conference proceedings / Working papers">Conference proceedings / Working papers</option>
+                  <option value="Domestic peer-reviewed journals">Domestic peer-reviewed journals</option>
+                  <option value="International peer-reviewed journals / Books" selected>International peer-reviewed journals / Books</option>
+                  <option value="Experienced Author & Journal Reviewer/Editor">Experienced Author &amp; Journal Reviewer/Editor</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="regLeadExp">Project Leadership Experience *</label>
+                <select id="regLeadExp" required>
+                  <option value="Research Team Member">Research Team Member</option>
+                  <option value="Independent Teacher-Researcher" selected>Independent Teacher-Researcher</option>
+                  <option value="Co-Investigator / Work-Package Lead">Co-Investigator / Work-Package Lead</option>
+                  <option value="Principal Investigator / Project Director">Principal Investigator / Project Director</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Research &amp; Methodological Interests (Select all that apply)</label>
+              <div class="checkbox-grid" id="interestTagsContainer">
+                <label class="chip-check"><input type="checkbox" value="Qualitative Inquiry" checked /> Qualitative Inquiry</label>
+                <label class="chip-check"><input type="checkbox" value="Quantitative & Scale Validation" /> Quantitative &amp; Scale Validation</label>
+                <label class="chip-check"><input type="checkbox" value="Mixed Methods" /> Mixed Methods</label>
+                <label class="chip-check"><input type="checkbox" value="Second Language Acquisition" /> Second Language Acquisition</label>
+                <label class="chip-check"><input type="checkbox" value="Language Teacher Identity & Education" checked /> Teacher Identity &amp; Education</label>
+                <label class="chip-check"><input type="checkbox" value="Critical Pedagogy & Sociolinguistics" /> Critical Pedagogy &amp; Sociolinguistics</label>
+                <label class="chip-check"><input type="checkbox" value="Action Research & Reflective Practice" /> Action Research</label>
+                <label class="chip-check"><input type="checkbox" value="Language Assessment & Testing" /> Language Assessment</label>
+              </div>
+              <input type="text" id="regCustomInterests" class="mt-05" placeholder="Additional specific topics (comma-separated)..." />
+            </div>
+
+            <div class="form-group">
+              <label><strong>Avoided / Blackout Months</strong> (Months you CANNOT host due to grading, fieldwork, or travel)</label>
+              <div class="checkbox-grid" id="blackoutMonthsContainer">
+                <label class="chip-check"><input type="checkbox" value="Jan" /> Jan</label>
+                <label class="chip-check"><input type="checkbox" value="Feb" /> Feb</label>
+                <label class="chip-check"><input type="checkbox" value="Mar" /> Mar</label>
+                <label class="chip-check"><input type="checkbox" value="Apr" /> Apr</label>
+                <label class="chip-check"><input type="checkbox" value="May" /> May</label>
+                <label class="chip-check"><input type="checkbox" value="Jun" /> Jun</label>
+                <label class="chip-check"><input type="checkbox" value="Jul" /> Jul</label>
+                <label class="chip-check"><input type="checkbox" value="Aug" /> Aug</label>
+                <label class="chip-check"><input type="checkbox" value="Sep" /> Sep</label>
+                <label class="chip-check"><input type="checkbox" value="Oct" /> Oct</label>
+                <label class="chip-check"><input type="checkbox" value="Nov" /> Nov</label>
+                <label class="chip-check"><input type="checkbox" value="Dec" /> Dec</label>
+              </div>
+            </div>
+
+            <button type="submit" class="btn-primary btn-full">Submit Member Profile</button>
+          </form>
+        </div>
+
+        <!-- Member Profile & Group Lookup -->
+        <div class="card">
+          <h2>My Group &amp; Hosting Schedule Lookup</h2>
+          <p class="text-muted small">
+            Enter your registered email to check your assigned Host Group, fellow group members, upcoming preparation window, and personal quiz completion log.
+          </p>
+          <div class="form-row">
+            <input type="email" id="lookupEmailInput" placeholder="Enter your registered email..." />
+            <button class="btn-primary" id="lookupProfileBtn">Check Profile</button>
+          </div>
+
+          <div id="memberProfileResult" class="mt-1 hidden"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         TAB 3: HOST GROUP STUDIO (TASK, QUIZ & QUESTION MANAGER)
+    ====================================================================== -->
+    <section id="hostTab" class="tab-panel">
+      <div class="card mb-1">
+        <div class="flex-between">
+          <div>
+            <h2>Host Group Preparation Studio</h2>
+            <p class="text-muted small">
+              Enter your session's <strong>Host Access Code</strong> (e.g., <code>MAR27-HOST</code> or <code>FEB27-HOST</code> in Demo Mode) to configure your monthly reading pack, build the gatekeeping quiz, and review member questions.
+            </p>
+          </div>
+          <div class="inline-input">
+            <input type="text" id="hostPasscodeInput" placeholder="Enter Host Code (e.g. MAR27-HOST)" />
+            <button class="btn-primary" id="unlockHostStudioBtn">Open Studio</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="hostStudioWorkspace" class="hidden">
+        <div class="workspace-grid">
+          <!-- Left Column: Paper Setup, Activities & Quiz Builder -->
+          <div class="card">
+            <div class="flex-between">
+              <h3 id="hostSessionHeading">Editing Session</h3>
+              <select id="hostSessionStatusSelect" class="status-select">
+                <option value="IN_PREP">IN_PREP (Drafting - Quiz Locked to Readers)</option>
+                <option value="OPEN_FOR_READING">OPEN_FOR_READING (Published - Quiz Live)</option>
+                <option value="ARCHIVED">ARCHIVED (Meeting Completed)</option>
+              </select>
+            </div>
+
+            <form id="hostSessionForm">
+              <div class="form-group mt-1">
+                <label for="hostPaperTitle">Target Research Paper Title *</label>
+                <input type="text" id="hostPaperTitle" required />
+              </div>
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label for="hostPaperAuthors">Authors, Year &amp; Journal *</label>
+                  <input type="text" id="hostPaperAuthors" required />
+                </div>
+                <div class="form-group">
+                  <label for="hostPaperUrl">DOI / PDF Link *</label>
+                  <input type="url" id="hostPaperUrl" required placeholder="https://doi.org/..." />
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="hostPaperAbstract">Paper Abstract &amp; Reading Focus Notes *</label>
+                <textarea id="hostPaperAbstract" rows="3" required></textarea>
+              </div>
+
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label for="hostMeetingLink">Gatekept Live Meeting Link (Zoom / Teams / Meet) *</label>
+                  <input type="url" id="hostMeetingLink" required placeholder="https://zoom.us/j/..." />
+                  <small class="text-muted">Strictly hidden until a member passes the quiz.</small>
+                </div>
+                <div class="form-group">
+                  <label for="hostPassThreshold">Required Quiz Pass Percentage (%)</label>
+                  <input type="number" id="hostPassThreshold" min="50" max="100" value="80" required />
+                </div>
+              </div>
+
+              <hr class="divider" />
+
+              <!-- Live Meeting Activities Designer -->
+              <div class="flex-between">
+                <h4>Live Meeting Critique Activities</h4>
+                <button type="button" class="btn-secondary btn-sm" id="addActivityBtn">+ Add Activity Block</button>
+              </div>
+              <p class="text-muted small">Design breakout tasks, methodological stress-tests, or debate prompts for the session.</p>
+              <div id="hostActivitiesBuilder"></div>
+
+              <hr class="divider" />
+
+              <!-- Gatekeeper Quiz Builder -->
+              <div class="flex-between">
+                <h4>Comprehension &amp; Critique Gatekeeper Quiz</h4>
+                <button type="button" class="btn-secondary btn-sm" id="addQuizItemBtn">+ Add Quiz Question</button>
+              </div>
+              <div id="hostQuizBuilder"></div>
+
+              <button type="submit" class="btn-primary btn-full mt-1">Save &amp; Publish Session Configuration</button>
+            </form>
+          </div>
+
+          <!-- Right Column: Collected Member Questions + Optional BYOK AI Quiz Drafter -->
+          <div>
+            <div class="card mb-1">
+              <div class="flex-between">
+                <h3>Submitted Member Questions &amp; Quiz Log</h3>
+                <button class="btn-secondary btn-sm" id="exportQuestionsBtn">Export Questions (.TXT)</button>
+              </div>
+              <p class="text-muted small">Questions and critiques submitted by members who completed the reading quiz:</p>
+              <div id="hostSubmittedQuestionsList" class="questions-feed"></div>
+            </div>
+
+            <!-- Optional Client-Side BYOK Gemini Assistant -->
+            <div class="card">
+              <h3>BYOK AI Quiz &amp; Critique Drafter (Optional)</h3>
+              <p class="text-muted small">
+                Paste a Gemini API key (stored strictly in your own browser's <code>localStorage</code>) and an excerpt/abstract of your chosen paper to automatically draft comprehension questions and critique activities.
+              </p>
+              <div class="form-group">
+                <label for="byokGeminiKey">Gemini API Key (Client-Side Only)</label>
+                <input type="password" id="byokGeminiKey" placeholder="AIzaSy..." />
+              </div>
+              <div class="form-group">
+                <label for="byokPaperExcerpt">Paste Paper Abstract / Methodology Section</label>
+                <textarea id="byokPaperExcerpt" rows="4" placeholder="Paste key sections of the research article here..."></textarea>
+              </div>
+              <button type="button" class="btn-secondary btn-full" id="generateAiDraftBtn">Draft Quiz &amp; Activities with Gemini</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         TAB 4: ADMIN CONSOLE (ROSTER, GROUPING, PIPELINES & BAN MANAGER)
+    ====================================================================== -->
+    <section id="adminTab" class="tab-panel">
+      <div class="card mb-1">
+        <div class="flex-between">
+          <div>
+            <h2>Administrator Command Console</h2>
+            <p class="text-muted small">
+              Manage member onboarding, balance host groups against blackout months, schedule overlapping monthly pipelines, and enforce IP/Fingerprint bans. (Demo Passcode: <code>ADMIN-2027</code>)
+            </p>
+          </div>
+          <div class="inline-input">
+            <input type="password" id="adminPasscodeInput" placeholder="Admin Passcode (ADMIN-2027)" />
+            <button class="btn-primary" id="unlockAdminBtn">Unlock Admin</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="adminWorkspace" class="hidden">
+        <!-- Admin Sub-Navigation -->
+        <div class="sub-nav mb-1">
+          <button class="sub-nav-btn active" data-subtab="adminRosterSub">1. Member Roster &amp; Grouping</button>
+          <button class="sub-nav-btn" data-subtab="adminGroupsSub">2. Host Groups &amp; Blackout Checker</button>
+          <button class="sub-nav-btn" data-subtab="adminScheduleSub">3. Monthly Pipeline Scheduler</button>
+          <button class="sub-nav-btn" data-subtab="adminSecuritySub">4. Security &amp; IP/Fingerprint Ban Registry</button>
+        </div>
+
+        <!-- SUBTAB 1: MEMBER ROSTER & GROUPING -->
+        <div id="adminRosterSub" class="sub-panel active card">
+          <div class="flex-between mb-1">
+            <h3>Registered Members &amp; Academic Matrix</h3>
+            <div class="inline-input">
+              <input type="text" id="rosterFilterInput" placeholder="Filter by interest, degree, or name..." />
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Member &amp; Affiliation</th>
+                  <th>Academic &amp; Leadership Profile</th>
+                  <th>Research Interests</th>
+                  <th>Blackout Months</th>
+                  <th>Device / IP Telemetry</th>
+                  <th>Assigned Group</th>
+                  <th>Security Actions</th>
+                </tr>
+              </thead>
+              <tbody id="adminRosterTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- SUBTAB 2: HOST GROUPS & BLACKOUT CONFLICT CHECKER -->
+        <div id="adminGroupsSub" class="sub-panel card hidden">
+          <div class="workspace-grid">
+            <div>
+              <h3>Create / Update Host Group</h3>
+              <form id="adminCreateGroupForm">
+                <div class="form-group">
+                  <label for="newGroupName">Group Name *</label>
+                  <input type="text" id="newGroupName" required placeholder="e.g., Group C: Critical Applied Linguistics" />
+                </div>
+                <div class="form-group">
+                  <label for="newGroupFocus">Thematic / Methodological Focus *</label>
+                  <input type="text" id="newGroupFocus" required placeholder="e.g., Qualitative Inquiry & Teacher Identity" />
+                </div>
+                <button type="submit" class="btn-primary">Create Host Group</button>
+              </form>
+            </div>
+            <div>
+              <h3>Active Host Groups &amp; Blackout Conflict Matrix</h3>
+              <p class="text-muted small">Aggregated member composition and avoided months per group:</p>
+              <div id="adminGroupsOverview"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUBTAB 3: MONTHLY PIPELINE SCHEDULER -->
+        <div id="adminScheduleSub" class="sub-panel card hidden">
+          <div class="workspace-grid">
+            <div>
+              <h3>Schedule New Monthly Reading Pipeline</h3>
+              <p class="text-muted small">
+                For a March meeting, schedule the Prep Start Date in January and the Quiz Release Date in early February.
+              </p>
+              <form id="adminCreateSessionForm">
+                <div class="form-row-2">
+                  <div class="form-group">
+                    <label for="schedMonthId">Month Slot (YYYY-MM) *</label>
+                    <input type="text" id="schedMonthId" required placeholder="2027-04" />
+                  </div>
+                  <div class="form-group">
+                    <label for="schedHostGroup">Assign Host Group *</label>
+                    <select id="schedHostGroup" required></select>
+                  </div>
+                </div>
+                <div id="schedConflictAlert" class="alert alert-warning hidden"></div>
+                <div class="form-row-3">
+                  <div class="form-group">
+                    <label for="schedPrepDate">1. Group Prep Start *</label>
+                    <input type="date" id="schedPrepDate" required />
+                  </div>
+                  <div class="form-group">
+                    <label for="schedQuizDate">2. Quiz Release Date *</label>
+                    <input type="date" id="schedQuizDate" required />
+                  </div>
+                  <div class="form-group">
+                    <label for="schedMeetDate">3. Live Meeting Date *</label>
+                    <input type="date" id="schedMeetDate" required />
+                  </div>
+                </div>
+                <div class="form-row-2">
+                  <div class="form-group">
+                    <label for="schedPasscode">Host Group Access Code *</label>
+                    <input type="text" id="schedPasscode" required placeholder="APR27-HOST" />
+                  </div>
+                  <div class="form-group">
+                    <label for="schedInitialStatus">Initial Pipeline Stage</label>
+                    <select id="schedInitialStatus">
+                      <option value="IN_PREP">IN_PREP (Host Group Preparing)</option>
+                      <option value="OPEN_FOR_READING">OPEN_FOR_READING (Quiz Open)</option>
+                    </select>
+                  </div>
+                </div>
+                <button type="submit" class="btn-primary btn-full">Create &amp; Assign Monthly Pipeline</button>
+              </form>
+            </div>
+            <div>
+              <h3>Scheduled Monthly Pipelines &amp; Gatekeeper Completion</h3>
+              <div id="adminScheduleTableContainer"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUBTAB 4: SECURITY & IP / DIGITAL FINGERPRINT BAN REGISTRY -->
+        <div id="adminSecuritySub" class="sub-panel card hidden">
+          <div class="workspace-grid">
+            <div>
+              <h3>Manual IP / Digital Fingerprint Block</h3>
+              <p class="text-muted small">
+                Blocked emails, public IPs, and SHA-256 browser/hardware fingerprints are barred from registering, taking quizzes, or unlocking meeting links.
+              </p>
+              <form id="adminManualBanForm">
+                <div class="form-group">
+                  <label for="banEmail">Target Email (Optional)</label>
+                  <input type="email" id="banEmail" placeholder="abusive@domain.com" />
+                </div>
+                <div class="form-group">
+                  <label for="banIp">Target IP Address (Optional)</label>
+                  <input type="text" id="banIp" placeholder="203.0.113.42" />
+                </div>
+                <div class="form-group">
+                  <label for="banFp">Target Device Fingerprint Hash (Optional)</label>
+                  <input type="text" id="banFp" placeholder="fp_9a8b7c6d..." />
+                </div>
+                <div class="form-group">
+                  <label for="banReason">Ban Reason *</label>
+                  <input type="text" id="banReason" required placeholder="Repeatedly sharing meeting links externally / spam" />
+                </div>
+                <button type="submit" class="btn-danger btn-full">Enforce Security Block</button>
+              </form>
+            </div>
+            <div>
+              <h3>Active Blocked Registry (Emails, IPs &amp; Fingerprints)</h3>
+              <div id="adminBanListContainer"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
