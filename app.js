@@ -1,15 +1,12 @@
 /**
  * TERECONET Inhouse Academic Meeting Portal - Client Engine (app.js)
- * Fixes:
- * 1. Remembers active tab across page refreshes
- * 2. Remembers Admin & Host unlock state reliably (boolean + fallback check)
- * 3. Forces no-store cache on Google Apps Script GET/POST
+ * Safe-Merge Compatible Version (Never overwrites server records)
  */
 
 const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbx-6Ui54yq-Sn78icCjcHNsbDzd7xIrASDjnxRoWmla1f62Qx1TnocCbj-A_sQHX31e_A/exec';
 
 const STORAGE_KEYS = {
-  STATE: 'srcp_portal_state_v2',
+  STATE: 'srcp_portal_state_v3',
   READER_EMAIL: 'srcp_reader_email',
   GEMINI_KEY: 'srcp_byok_gemini_key',
   DEVICE_TOKEN: 'srcp_persistent_device_token',
@@ -88,7 +85,7 @@ async function computeDeviceTelemetry() {
 }
 
 /* ==========================================================================
-   2. CLEAN INITIAL STATE (NO DEMO DATA)
+   2. CLEAN INITIAL STATE
    ========================================================================== */
 function getInitialSeedState() {
   return {
@@ -115,53 +112,51 @@ function normalizeState(raw) {
 }
 
 /* ==========================================================================
-   3. STATE STORAGE & TWO-WAY CLOUD SYNC WITH GOOGLE APPS SCRIPT
+   3. STATE STORAGE & SAFE CLOUD SYNC WITH GOOGLE APPS SCRIPT
    ========================================================================== */
 async function loadState() {
-  // 1. Load local cache immediately so UI never blanks out
-  const saved = localStorage.getItem(STORAGE_KEYS.STATE);
-  if (saved) {
-    try {
-      appState = normalizeState(JSON.parse(saved));
-    } catch (e) {
-      appState = getInitialSeedState();
-    }
-  } else {
-    appState = getInitialSeedState();
-  }
-
-  // 2. Pull latest live state from Google Sheets
   try {
     const res = await fetch(GAS_WEBAPP_URL + '?t=' + Date.now(), {
       method: 'GET',
       cache: 'no-store'
     });
     const remoteData = await res.json();
-    if (remoteData && remoteData.status !== 'EMPTY' && (Array.isArray(remoteData.sessions) || Array.isArray(remoteData.groups))) {
+    if (remoteData && remoteData.status !== 'EMPTY' && (Array.isArray(remoteData.members) || Array.isArray(remoteData.sessions))) {
       appState = normalizeState(remoteData);
       localStorage.setItem(STORAGE_KEYS.STATE, JSON.stringify(appState));
       return;
-    } else if (remoteData && remoteData.status === 'EMPTY') {
-      // Sheet A1 is blank; push current state up to initialize A1
-      saveState();
     }
   } catch (err) {
     console.warn('Could not fetch remote state, using local cache:', err);
   }
+
+  const saved = localStorage.getItem(STORAGE_KEYS.STATE);
+  if (saved) {
+    try {
+      appState = normalizeState(JSON.parse(saved));
+      return;
+    } catch (e) {}
+  }
+  appState = getInitialSeedState();
 }
 
-function saveState() {
+async function saveState(allowDelete = false) {
   localStorage.setItem(STORAGE_KEYS.STATE, JSON.stringify(appState));
-  syncWithGoogleAppsScript('SYNC_STATE', appState);
+  const res = await syncWithGoogleAppsScript('SYNC_STATE', appState, allowDelete);
+  if (res && res.ok && res.state) {
+    appState = normalizeState(res.state);
+    localStorage.setItem(STORAGE_KEYS.STATE, JSON.stringify(appState));
+  }
 }
 
-async function syncWithGoogleAppsScript(action, payload) {
+async function syncWithGoogleAppsScript(action, payload, allowDelete = false) {
   try {
     const response = await fetch(GAS_WEBAPP_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
         action,
+        allowDelete,
         telemetry: clientTelemetry,
         payload
       })
@@ -316,7 +311,7 @@ function revealMeetingLink(session, score) {
   scoreEl.textContent = `Verified Quiz Score: ${score}% (Required: ${session.passThreshold}%)`;
 }
 
-document.getElementById('readerQuizForm').addEventListener('submit', e => {
+document.getElementById('readerQuizForm').addEventListener('submit', async e => {
   e.preventDefault();
   const email = (document.getElementById('readerEmailInput').value || '').trim().toLowerCase();
   if (!email) {
@@ -360,7 +355,7 @@ document.getElementById('readerQuizForm').addEventListener('submit', e => {
     fingerprint: clientTelemetry.fingerprint
   });
 
-  saveState();
+  await saveState(false);
 
   if (passed) {
     revealMeetingLink(session, score);
@@ -381,7 +376,7 @@ document.getElementById('verifyReaderBtn').addEventListener('click', () => {
 /* ==========================================================================
    5. MEMBER REGISTRATION & PROFILE LOOKUP
    ========================================================================== */
-document.getElementById('memberRegistrationForm').addEventListener('submit', e => {
+document.getElementById('memberRegistrationForm').addEventListener('submit', async e => {
   e.preventDefault();
   const email = document.getElementById('regEmail').value.trim().toLowerCase();
   const ban = isUserBlocked(email);
@@ -422,10 +417,10 @@ document.getElementById('memberRegistrationForm').addEventListener('submit', e =
     appState.members.push(memberPayload);
   }
 
-  saveState();
+  await saveState(false);
   document.getElementById('lookupEmailInput').value = email;
   renderMemberLookup(email);
-  showAlert('Academic profile and blackout months saved. The Administrator can now assign you to a balanced Host Group.', 'success');
+  showAlert('Academic profile and blackout months saved.', 'success');
 });
 
 document.getElementById('lookupProfileBtn').addEventListener('click', () => {
@@ -595,7 +590,7 @@ function collectHostQuizFromDOM() {
   });
 }
 
-document.getElementById('hostSessionForm').addEventListener('submit', e => {
+document.getElementById('hostSessionForm').addEventListener('submit', async e => {
   e.preventDefault();
   const session = appState.sessions.find(s => s.id === activeHostSessionId);
   if (!session) return;
@@ -610,7 +605,7 @@ document.getElementById('hostSessionForm').addEventListener('submit', e => {
   session.activities = collectHostActivitiesFromDOM();
   session.quiz = collectHostQuizFromDOM();
 
-  saveState();
+  await saveState(false);
   renderReaderPortal();
   showAlert(`Session ${session.id} updated and synced to Google Sheets.`, 'success');
 });
@@ -761,14 +756,14 @@ function renderAdminRosterTable() {
         </td>
       `;
 
-      tr.querySelector('.admin-assign-group').addEventListener('change', e => {
+      tr.querySelector('.admin-assign-group').addEventListener('change', async e => {
         m.groupId = e.target.value;
-        saveState();
+        await saveState(false);
         renderAdminGroupsOverview();
         showAlert(`Assigned ${m.name} to group.`, 'info');
       });
 
-      tr.querySelector('[data-ban-member]').addEventListener('click', () => {
+      tr.querySelector('[data-ban-member]').addEventListener('click', async () => {
         appState.blockedRegistry.push({
           id: 'BAN-' + Date.now(),
           timestamp: new Date().toISOString().slice(0, 10),
@@ -778,7 +773,7 @@ function renderAdminRosterTable() {
           reason: `Banned via Admin Roster (${m.name})`
         });
         appState.members = appState.members.filter(item => item.id !== m.id);
-        saveState();
+        await saveState(true);
         renderAdminConsole();
         showAlert(`Banned ${m.name} (Email, IP & Fingerprint added to Blocked Registry).`, 'danger');
       });
@@ -828,20 +823,20 @@ function renderAdminGroupsOverview() {
   }).join('');
 
   container.querySelectorAll('[data-delete-group]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const gId = btn.getAttribute('data-delete-group');
       appState.groups = appState.groups.filter(g => g.id !== gId);
       appState.members.forEach(m => {
         if (m.groupId === gId) m.groupId = '';
       });
-      saveState();
+      await saveState(true);
       renderAdminConsole();
       showAlert('Host group deleted.', 'info');
     });
   });
 }
 
-document.getElementById('adminCreateGroupForm').addEventListener('submit', e => {
+document.getElementById('adminCreateGroupForm').addEventListener('submit', async e => {
   e.preventDefault();
   const name = document.getElementById('newGroupName').value.trim();
   const focus = document.getElementById('newGroupFocus').value.trim();
@@ -850,7 +845,7 @@ document.getElementById('adminCreateGroupForm').addEventListener('submit', e => 
     name,
     focus
   });
-  saveState();
+  await saveState(false);
   e.target.reset();
   renderAdminConsole();
   showAlert(`Created host group: ${name}`, 'success');
@@ -882,10 +877,10 @@ function renderAdminScheduler() {
   }).join('');
 
   container.querySelectorAll('[data-delete-session]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const sId = btn.getAttribute('data-delete-session');
       appState.sessions = appState.sessions.filter(s => s.id !== sId);
-      saveState();
+      await saveState(true);
       renderReaderPortal();
       renderAdminScheduler();
       showAlert(`Deleted session ${sId}.`, 'info');
@@ -893,7 +888,7 @@ function renderAdminScheduler() {
   });
 }
 
-document.getElementById('adminCreateSessionForm').addEventListener('submit', e => {
+document.getElementById('adminCreateSessionForm').addEventListener('submit', async e => {
   e.preventDefault();
   const monthId = document.getElementById('schedMonthId').value.trim();
   const groupId = document.getElementById('schedHostGroup').value;
@@ -919,7 +914,7 @@ document.getElementById('adminCreateSessionForm').addEventListener('submit', e =
     quiz: []
   });
 
-  saveState();
+  await saveState(false);
   e.target.reset();
   renderReaderPortal();
   renderAdminScheduler();
@@ -947,17 +942,17 @@ function renderAdminBanList() {
   `).join('');
 
   container.querySelectorAll('[data-unban]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const id = btn.getAttribute('data-unban');
       appState.blockedRegistry = appState.blockedRegistry.filter(b => b.id !== id);
-      saveState();
+      await saveState(true);
       renderAdminBanList();
       showAlert('Security block lifted.', 'info');
     });
   });
 }
 
-document.getElementById('adminManualBanForm').addEventListener('submit', e => {
+document.getElementById('adminManualBanForm').addEventListener('submit', async e => {
   e.preventDefault();
   appState.blockedRegistry.push({
     id: 'BAN-' + Date.now(),
@@ -967,7 +962,7 @@ document.getElementById('adminManualBanForm').addEventListener('submit', e => {
     fingerprint: document.getElementById('banFp').value.trim(),
     reason: document.getElementById('banReason').value.trim()
   });
-  saveState();
+  await saveState(false);
   e.target.reset();
   renderAdminBanList();
   showAlert('Security rule added to Blocked Registry.', 'danger');
@@ -1021,14 +1016,12 @@ document.querySelectorAll('.sub-nav-btn').forEach(btn => {
 });
 
 window.addEventListener('DOMContentLoaded', async () => {
-  // 1. Restore last active tab & subtab immediately
   const lastTab = localStorage.getItem(STORAGE_KEYS.ACTIVE_TAB);
   if (lastTab) activateTab(lastTab);
 
   const lastSubTab = localStorage.getItem(STORAGE_KEYS.ACTIVE_SUBTAB);
   if (lastSubTab) activateSubTab(lastSubTab);
 
-  // 2. Restore Admin Console immediately if previously unlocked in this browser
   const isAdminUnlocked = localStorage.getItem(STORAGE_KEYS.ADMIN_UNLOCKED) === 'true';
   if (isAdminUnlocked) {
     document.getElementById('adminPasscodeInput').value = localStorage.getItem(STORAGE_KEYS.ADMIN_PASS) || 'ADMIN-2027';
@@ -1037,7 +1030,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (unlockBtn) unlockBtn.textContent = 'Admin Unlocked ✓';
   }
 
-  // 3. Load telemetry and cloud state
   await computeDeviceTelemetry();
   await loadState();
 
@@ -1050,12 +1042,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('byokGeminiKey').value = savedGemini;
   }
 
-  // 4. Re-render Admin Console with fresh cloud data if unlocked
   if (isAdminUnlocked) {
     renderAdminConsole();
   }
 
-  // 5. Restore Host Studio if previously unlocked
   const savedHostPass = localStorage.getItem(STORAGE_KEYS.HOST_AUTH);
   if (savedHostPass) {
     const hostSession = (appState.sessions || []).find(
